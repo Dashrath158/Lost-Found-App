@@ -1,60 +1,27 @@
-from flask import Flask, jsonify, request
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
+from models import db
+from user_apis import user_api  # Import the Blueprint
 
-# Initialize Flask app, database, and JWT manager
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = '5c303052273cfcb635841b9c86d4a7eef498386af15de38ff5a19bd2aeebb803'  # Change this to a random secret key
-db = SQLAlchemy(app)
+app.config['JWT_SECRET_KEY'] = '5c303052273cfcb635841b9c86d4a7eef498386af15de38ff5a19bd2aeebb803'
+
+db.init_app(app)
 jwt = JWTManager(app)
 
+# Register the user_api Blueprint
+app.register_blueprint(user_api, url_prefix='/user')  # Routes are now prefixed with /api
 
-# Create database tables
 with app.app_context():
-    db.create_all()  # Create the database tables
+    db.create_all()  # Create tables if they don't exist
 
-# User Registration Endpoint
-@app.route('/register', methods=['POST'])
-def register():
-    username = request.json.get('username')
-    password = request.json.get('password')
-    email = request.json.get('email')
-
-    if User.query.filter_by(username=username).first():
-        return jsonify({'msg': 'Username already exists.'}), 400
-
-    hashed_password = generate_password_hash(password, method='sha256')
-    new_user = User(username=username, password=hashed_password, email=email)
-
-    new_user.save()  # Use the save method to store the user
-
-    return jsonify({'msg': 'User created successfully!'}), 201
-
-# User Login Endpoint
-@app.route('/login', methods=['POST'])
-def login():
-    username = request.json.get('username')
-    password = request.json.get('password')
-    user = User.query.filter_by(username=username).first()
-
-    if user and check_password_hash(user.password, password):
-        # Create a new access token
-        access_token = create_access_token(identity={'username': user.username})
-        return jsonify(access_token=access_token), 200
-
-    return jsonify({'msg': 'Invalid credentials!'}), 401
-
-# Protected Route
 @app.route('/protected', methods=['GET'])
 @jwt_required()
 def protected():
-    # Access the identity of the current user with get_jwt_identity
     current_user = get_jwt_identity()
     return jsonify(logged_in_as=current_user['username']), 200
 
-# Run the application
 if __name__ == '__main__':
     app.run(debug=True)
