@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
 from models.User import User
 from models import db
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 
 user_api = Blueprint('user_api', __name__)  # Define the Blueprint
 
@@ -19,7 +19,7 @@ def register():
         if not username or not password or not email:
             current_app.logger.warning("Registration failed: Missing fields")
             return jsonify({'msg': 'Please provide username, password, and email.'}), 400
-
+        
         if len(password) < 6:
             current_app.logger.warning("Registration failed: Password too short")
             return jsonify({'msg': 'Password must be at least 6 characters long.'}), 400
@@ -42,18 +42,34 @@ def register():
             db.session.rollback()
             current_app.logger.error(f"Registration failed: Database error for user '{username}': {str(e)}")
             return jsonify({'msg': 'An error occurred during registration.', 'error': str(e)}), 500
+        
     except Exception as ex:
         current_app.logger.error(f"Error in registering user: {str(ex)}")
         return jsonify({'msg': 'An internal error occurred.'}), 500
 
 @user_api.route('/login', methods=['POST'])
 def login():
-    username = request.json.get('username')
+    user_identifier = request.json.get('user')  # Username or email
     password = request.json.get('password')
-    user = User.query.filter_by(username=username).first()
 
+    user = User.query.filter((User.username == user_identifier) | (User.email == user_identifier)).first()
+    
     if user and check_password_hash(user.password, password):
+        # Create JWT access token
         access_token = create_access_token(identity={'username': user.username})
         return jsonify(access_token=access_token), 200
 
+    current_app.logger.warning(f"Login failed for user: {user_identifier}")
     return jsonify({'msg': 'Invalid credentials!'}), 401
+
+@user_api.route('/protected', methods=['GET'])
+@jwt_required()
+def protected():
+    current_user = get_jwt_identity()
+    return jsonify(logged_in_as=current_user['username']), 200
+
+@user_api.route('/fetchItems', methods=['GET'])
+@jwt_required()
+def fetch_items():
+    current_user = get_jwt_identity()
+    return jsonify(logged_in_as=current_user['username']), 200
